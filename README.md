@@ -6,7 +6,6 @@ Una aplicación profesional de Streamlit que implementa el pipeline completo de 
 
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-FF4B4B.svg)](https://streamlit.io)
 [![Python](https://img.shields.io/badge/Python-3.8+-3776AB.svg)](https://python.org)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ## 🎯 Características Principales
 
@@ -208,6 +207,3 @@ Este proyecto está bajo la **Licencia MIT**. Ver archivo [LICENSE](LICENSE) par
 
 ---
 
-**Desarrollado con ❤️ para la Actividad Individual de Machine Learning**
-
-**¡Éxito garantizado! 🚀✨**
