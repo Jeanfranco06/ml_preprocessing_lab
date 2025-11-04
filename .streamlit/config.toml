@@ -1,0 +1,37 @@
+[logger]
+
+# Level of logging: 'error', 'warning', 'info', 'debug'.
+level = "info"
+
+[client]
+
+# If false, will attempt to open a new tab or window every time Streamlit is
+# called. If true, will only open a new tab the first time Streamlit is called.
+showSidebarNavigation = true
+
+# Controls whether uncaught app exceptions are displayed in the browser. By
+# default, this is set to True and Streamlit displays app exceptions and
+# associated tracebacks in the browser.
+showErrorDetails = true
+
+[theme]
+
+# The preset Streamlit theme that your custom theme inherits from.
+# One of "light" or "dark".
+base = "light"
+
+# Primary accent color for interactive elements.
+primaryColor = "#667eea"
+
+# Background color for the main content area.
+backgroundColor = "#f8f9fa"
+
+# Background color for sidebar and most interactive widgets.
+secondaryBackgroundColor = "#ffffff"
+
+# Color used for almost all text.
+textColor = "#2c3e50"
+
+# Font family for all text in the app, except code blocks. One of "sans serif",
+# "serif", or "monospace".
+font = "sans serif"

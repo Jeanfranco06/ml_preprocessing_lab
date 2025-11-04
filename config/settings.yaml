@@ -1,0 +1,130 @@
+# Configuración de ML Preprocessing Lab
+app:
+  name: "ML Preprocessing Lab"
+  version: "2.0.0"
+  description: "Suite avanzado de preprocesamiento y entrenamiento para Machine Learning"
+  author: "Equipo ML Preprocessing Lab"
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/ml_preprocessing.log"
+  max_file_size: 10485760  # 10MB
+  backup_count: 5
+
+datasets:
+  titanic:
+    name: "Titanic Survival Prediction"
+    file: "datasets/raw/titanic.csv"
+    target_column: "Survived"
+    test_size: 0.3
+    random_state: 42
+    irrelevant_columns: ["Name", "Ticket", "Cabin", "PassengerId"]
+    categorical_columns: ["Sex", "Embarked"]
+    numerical_columns: ["Age", "Fare", "SibSp", "Parch"]
+
+  student_performance:
+    name: "Student Performance Prediction"
+    file: "datasets/raw/student-mat.csv"
+    target_column: "G3"
+    test_size: 0.2
+    random_state: 42
+    irrelevant_columns: []
+    categorical_columns: ["school", "sex", "address", "famsize", "Pstatus", "Mjob", "Fjob",
+                         "reason", "guardian", "schoolsup", "famsup", "paid", "activities",
+                         "nursery", "higher", "internet", "romantic"]
+    numerical_columns: ["age", "Medu", "Fedu", "traveltime", "studytime", "failures",
+                       "famrel", "freetime", "goout", "Dalc", "Walc", "health", "absences", "G1", "G2"]
+
+  iris:
+    name: "Iris Species Classification"
+    file: "datasets/raw/iris.csv"
+    target_column: "target"
+    test_size: 0.3
+    random_state: 42
+    irrelevant_columns: []
+    categorical_columns: []
+    numerical_columns: ["sepal length (cm)", "sepal width (cm)", "petal length (cm)", "petal width (cm)"]
+
+preprocessing:
+  missing_values:
+    numerical_strategy: "mean"
+    categorical_strategy: "mode"
+  encoding:
+    method: "label_encoding"  # options: label_encoding, one_hot_encoding
+  scaling:
+    method: "standard_scaler"  # options: standard_scaler, min_max_scaler, robust_scaler
+  outlier_detection:
+    method: "iqr"  # options: iqr, zscore, isolation_forest
+    threshold: 1.5
+
+models:
+  classification:
+    - name: "Logistic Regression"
+      sklearn_name: "LogisticRegression"
+      params:
+        random_state: 42
+        max_iter: 1000
+    - name: "Random Forest"
+      sklearn_name: "RandomForestClassifier"
+      params:
+        n_estimators: 100
+        random_state: 42
+        max_depth: 10
+    - name: "SVM"
+      sklearn_name: "SVC"
+      params:
+        kernel: "rbf"
+        random_state: 42
+        C: 1.0
+    - name: "K-Nearest Neighbors"
+      sklearn_name: "KNeighborsClassifier"
+      params:
+        n_neighbors: 5
+
+  regression:
+    - name: "Linear Regression"
+      sklearn_name: "LinearRegression"
+      params: {}
+    - name: "Random Forest Regressor"
+      sklearn_name: "RandomForestRegressor"
+      params:
+        n_estimators: 100
+        random_state: 42
+        max_depth: 10
+    - name: "SVR"
+      sklearn_name: "SVR"
+      params:
+        kernel: "rbf"
+        C: 1.0
+
+evaluation:
+  classification_metrics: ["accuracy", "precision", "recall", "f1_score", "roc_auc"]
+  regression_metrics: ["mae", "mse", "rmse", "r2_score"]
+  cv_folds: 5
+  cross_validation: true
+
+export:
+  formats: ["csv", "json", "excel", "pickle"]
+  reports: ["markdown", "html", "pdf"]
+  include_visualizations: true
+  include_code: true
+
+ui:
+  theme: "light"  # options: light, dark, auto
+  primary_color: "#FF4B4B"
+  secondary_color: "#3776AB"
+  max_table_rows: 1000
+  enable_animations: true
+  sidebar_collapsed: false
+
+performance:
+  enable_caching: true
+  cache_timeout: 3600  # 1 hour
+  enable_parallel_processing: true
+  max_workers: 4
+
+validation:
+  enable_data_validation: true
+  strict_mode: false
+  allow_missing_files: false
