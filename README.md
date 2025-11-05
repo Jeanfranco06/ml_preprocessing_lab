@@ -53,10 +53,58 @@ Una aplicación profesional de Streamlit que implementa el pipeline completo de 
 
 3. **Ejecuta la aplicación**
    ```bash
-   streamlit run Inicio.py
+   streamlit run app.py
    ```
 
 4. **Abre tu navegador** en `http://localhost:8501`
+
+## 🚀 Despliegue en Streamlit Cloud
+
+### Requisitos Previos
+- **Cuenta en GitHub** con el repositorio del proyecto
+- **Cuenta en Streamlit Cloud** (gratuita)
+
+### Pasos para Desplegar
+
+1. **Sube el código a GitHub**
+   ```bash
+   git add .
+   git commit -m "Ready for deployment"
+   git push origin main
+   ```
+
+2. **Ve a [Streamlit Cloud](https://share.streamlit.io)**
+
+3. **Conecta tu repositorio**
+   - Haz clic en "New app"
+   - Selecciona tu repositorio de GitHub
+   - Configura:
+     - **Repository**: `Jeanfranco06/ml_preprocessing_lab`
+     - **Branch**: `main`
+     - **Main file path**: `app.py`
+     - **Python version**: `3.8` o superior
+
+4. **Haz clic en "Deploy"**
+
+5. **¡Tu app estará lista en minutos!**
+
+### Archivos de Configuración para Despliegue
+
+El proyecto incluye todos los archivos necesarios para Streamlit Cloud:
+
+- ✅ **`app.py`** - Archivo principal de la aplicación
+- ✅ **`requirements.txt`** - Todas las dependencias Python
+- ✅ **`packages.txt`** - Dependencias del sistema (si es necesario)
+- ✅ **`.streamlit/config.toml`** - Configuración de Streamlit
+- ✅ **`datasets/`** - Datos incluidos en el repositorio
+
+### Solución de Problemas Comunes
+
+**Error de memoria**: Si la app se queda sin memoria, considera reducir el tamaño de los datasets o optimizar las visualizaciones.
+
+**Tiempo de carga**: Las primeras cargas pueden ser lentas. Streamlit Cloud optimiza automáticamente las cargas posteriores.
+
+**Dependencias faltantes**: Asegúrate de que todas las librerías estén en `requirements.txt`.
 
 ## 📋 Uso de la Aplicación
 
@@ -106,7 +154,7 @@ ml_preprocessing_lab/
 │   └── 📂 export/                     # Exportación y reportes
 │       ├── __init__.py
 │       └── reports.py                 # Generación de reportes
-├── 📄 Inicio.py                       # Página principal de Streamlit
+├── 📄 app.py                          # Página principal de Streamlit
 ├── 📂 pages/                          # Páginas adicionales de Streamlit
 │   ├── Titanic.py                     # Pipeline completo Titanic
 │   ├── Student_Performance.py         # Pipeline Student Performance
@@ -206,4 +254,3 @@ Este proyecto está bajo la **Licencia MIT**. Ver archivo [LICENSE](LICENSE) par
 - **Comunidad de ML** por el conocimiento compartido
 
 ---
-

@@ -322,6 +322,74 @@ elif not theme_toggle and current_theme != 'light':
     st.rerun()  # Force a rerun to apply the new theme immediately
 
 # Helper functions
+def calculate_data_quality_metrics(df, dataset_name):
+    """Calculate comprehensive data quality metrics for a dataset."""
+    metrics = {}
+
+    # Basic info
+    metrics['total_rows'] = len(df)
+    metrics['total_columns'] = len(df.columns)
+    metrics['total_cells'] = len(df) * len(df.columns)
+
+    # Completeness (non-null values)
+    total_non_null = df.notnull().sum().sum()
+    metrics['completeness'] = (total_non_null / metrics['total_cells']) * 100
+
+    # Uniqueness per column
+    uniqueness = {}
+    for col in df.columns:
+        if df[col].dtype == 'object' or df[col].dtype.name == 'category':
+            uniqueness[col] = (df[col].nunique() / len(df)) * 100
+        else:
+            # For numeric columns, uniqueness is less relevant
+            uniqueness[col] = (df[col].nunique() / len(df)) * 100
+    metrics['uniqueness'] = uniqueness
+
+    # Data types distribution
+    dtypes_count = df.dtypes.value_counts()
+    metrics['data_types'] = dict(dtypes_count)
+
+    # Outlier detection (for numeric columns)
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    outlier_info = {}
+    for col in numeric_cols:
+        Q1 = df[col].quantile(0.25)
+        Q3 = df[col].quantile(0.75)
+        IQR = Q3 - Q1
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+        outliers = ((df[col] < lower_bound) | (df[col] > upper_bound)).sum()
+        outlier_percentage = (outliers / len(df)) * 100
+        outlier_info[col] = {
+            'outliers_count': outliers,
+            'outliers_percentage': outlier_percentage
+        }
+    metrics['outliers'] = outlier_info
+
+    # Dataset summary
+    summary = {
+        'name': dataset_name,
+        'shape': f"{metrics['total_rows']} × {metrics['total_columns']}",
+        'completeness_score': f"{metrics['completeness']:.1f}%",
+        'numeric_columns': len(numeric_cols),
+        'categorical_columns': len(df.columns) - len(numeric_cols),
+        'potential_issues': []
+    }
+
+    # Identify potential issues
+    if metrics['completeness'] < 95:
+        summary['potential_issues'].append("Alta cantidad de valores faltantes")
+
+    total_outliers = sum(info['outliers_count'] for info in outlier_info.values())
+    if total_outliers > len(df) * 0.1:  # More than 10% outliers
+        summary['potential_issues'].append("Posibles outliers detectados")
+
+    if len(summary['potential_issues']) == 0:
+        summary['potential_issues'].append("Datos de buena calidad")
+
+    metrics['summary'] = summary
+    return metrics
+
 def load_titanic_data():
     """Load Titanic dataset from CSV file."""
     data_dir = Path(__file__).parent / "datasets" / "raw"
@@ -401,19 +469,13 @@ if dataset_key == "home":
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         st.metric("Conjuntos Disponibles", "3")
-        st.markdown('</div>', unsafe_allow_html=True)
 
     with col2:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         st.metric("Etapas de Preprocesamiento", "6")
-        st.markdown('</div>', unsafe_allow_html=True)
 
     with col3:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         st.metric("Listo para ML", "✅")
-        st.markdown('</div>', unsafe_allow_html=True)
 
 elif dataset_key == "titanic":
     # Página del Conjunto Titanic
@@ -453,7 +515,7 @@ elif dataset_key == "titanic":
                 survival_rate = (survived / df.shape[0]) * 100
                 st.metric("Tasa Supervivencia", f"{survival_rate:.1f}%")
 
-            st.dataframe(df.head(), use_container_width=True)
+            st.dataframe(df.head(), width='stretch')
         else:
             st.error("❌ Error al cargar el conjunto de datos")
 
@@ -464,8 +526,9 @@ elif dataset_key == "titanic":
         df = st.session_state.titanic_raw
 
         # Crear pestañas para las etapas de preprocesamiento
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
             "🔍 Exploración",
+            "📈 Calidad de Datos",
             "🧹 Limpieza",
             "🔤 Codificación",
             "📏 Normalización",
@@ -485,7 +548,7 @@ elif dataset_key == "titanic":
                     'Columna': df.columns,
                     'Tipo': df.dtypes.astype(str)
                 })
-                st.dataframe(dtypes_df, use_container_width=True)
+                st.dataframe(dtypes_df, width='stretch')
 
             with col2:
                 st.subheader("Valores Faltantes")
@@ -495,11 +558,11 @@ elif dataset_key == "titanic":
                     'Faltantes': null_counts.values,
                     'Porcentaje': (null_counts / len(df) * 100).round(2)
                 })
-                st.dataframe(null_df[null_df['Faltantes'] > 0], use_container_width=True)
+                st.dataframe(null_df[null_df['Faltantes'] > 0], width='stretch')
 
             # Estadísticas básicas
             st.subheader("Resumen Estadístico")
-            st.dataframe(df.describe(), use_container_width=True)
+            st.dataframe(df.describe(), width='stretch')
 
             # Visualizaciones
             st.subheader("Distribución de Supervivencia")
@@ -523,8 +586,89 @@ elif dataset_key == "titanic":
             plt.tight_layout()
             st.pyplot(fig)
 
-        # Etapa 3: Limpieza de Datos
+        # 📈 Calidad de Datos
         with tab2:
+            st.markdown("### 📈 Calidad de Datos")
+
+            # Calculate data quality metrics
+            quality_metrics = calculate_data_quality_metrics(df, "Titanic")
+
+            # Quality Score Overview
+            st.subheader("📊 Puntaje de Calidad General")
+
+            col1, col2, col3, col4 = st.columns(4)
+
+            with col1:
+                completeness_score = quality_metrics['completeness']
+                completeness_color = "🟢" if completeness_score >= 95 else "🟡" if completeness_score >= 85 else "🔴"
+                st.metric("Completitud", f"{completeness_score:.1f}%", delta=None, delta_color="normal")
+                st.write(f"{completeness_color} **Interpretación:** {'Excelente' if completeness_score >= 95 else 'Buena' if completeness_score >= 85 else 'Requiere atención'}")
+
+            with col2:
+                total_outliers = sum(info['outliers_count'] for info in quality_metrics['outliers'].values())
+                outlier_percentage = (total_outliers / quality_metrics['total_rows']) * 100
+                outlier_color = "🟢" if outlier_percentage < 5 else "🟡" if outlier_percentage < 10 else "🔴"
+                st.metric("Outliers Detectados", f"{total_outliers} ({outlier_percentage:.1f}%)")
+                st.write(f"{outlier_color} **Interpretación:** {'Mínimos' if outlier_percentage < 5 else 'Moderados' if outlier_percentage < 10 else 'Significativos'}")
+
+            with col3:
+                st.metric("Columnas Numéricas", quality_metrics['summary']['numeric_columns'])
+                st.write("**Tipos de datos:**")
+                for dtype, count in quality_metrics['data_types'].items():
+                    st.write(f"- {dtype}: {count}")
+
+            with col4:
+                st.metric("Columnas Categóricas", quality_metrics['summary']['categorical_columns'])
+                st.write("**Dimensiones:**")
+                st.write(f"- {quality_metrics['summary']['shape']}")
+
+            # Potential Issues Alert
+            if quality_metrics['summary']['potential_issues'][0] != "Datos de buena calidad":
+                st.warning("⚠️ **Problemas Potenciales Detectados:**")
+                for issue in quality_metrics['summary']['potential_issues']:
+                    st.write(f"• {issue}")
+            else:
+                st.success("✅ **Análisis de Calidad:** Datos de buena calidad detectados")
+
+            # Detailed Outlier Analysis
+            st.subheader("🔍 Análisis Detallado de Outliers")
+            outlier_df = pd.DataFrame({
+                'Columna': list(quality_metrics['outliers'].keys()),
+                'Outliers': [info['outliers_count'] for info in quality_metrics['outliers'].values()],
+                'Porcentaje': [f"{info['outliers_percentage']:.2f}%" for info in quality_metrics['outliers'].values()]
+            })
+            st.dataframe(outlier_df, width='stretch')
+
+            # Uniqueness Analysis
+            st.subheader("🎯 Análisis de Unicidad")
+            uniqueness_df = pd.DataFrame({
+                'Columna': list(quality_metrics['uniqueness'].keys()),
+                'Unicidad (%)': [f"{val:.2f}%" for val in quality_metrics['uniqueness'].values()]
+            })
+            st.dataframe(uniqueness_df, width='stretch')
+
+            # Quality Recommendations
+            st.subheader("💡 Recomendaciones para Mejorar la Calidad")
+
+            recommendations = []
+
+            if quality_metrics['completeness'] < 95:
+                recommendations.append("• Considerar técnicas de imputación para valores faltantes (media, mediana, moda)")
+                recommendations.append("• Evaluar si los valores faltantes siguen un patrón específico")
+
+            if total_outliers > quality_metrics['total_rows'] * 0.1:
+                recommendations.append("• Investigar outliers para determinar si son errores de medición o valores válidos extremos")
+                recommendations.append("• Considerar técnicas robustas de escalado (RobustScaler) o transformación de datos")
+
+            if len(recommendations) == 0:
+                recommendations.append("• Los datos muestran buena calidad general")
+                recommendations.append("• Proceder con el preprocesamiento estándar")
+
+            for rec in recommendations:
+                st.write(rec)
+
+        # Etapa 3: Limpieza de Datos
+        with tab3:
             st.markdown("### 🧹 Etapa 3: Limpieza de Datos")
 
             # Remover columnas irrelevantes
@@ -568,10 +712,10 @@ elif dataset_key == "titanic":
             if initial_rows > final_rows:
                 st.success(f"✅ Eliminadas {initial_rows - final_rows} filas duplicadas")
 
-            st.dataframe(df_clean.head(), use_container_width=True)
+            st.dataframe(df_clean.head(), width='stretch')
 
         # Etapa 4: Codificación
-        with tab3:
+        with tab4:
             st.markdown("### 🔤 Etapa 4: Codificación Categórica")
 
             if 'titanic_clean' not in st.session_state:
@@ -606,14 +750,14 @@ elif dataset_key == "titanic":
                             st.write(f"  `{original}` → `{encoded}`")
                         st.write("---")
 
-                    st.dataframe(df_encoded.head(), use_container_width=True)
+                    st.dataframe(df_encoded.head(), width='stretch')
                     st.success("✅ Variables categóricas codificadas exitosamente")
                 else:
                     st.session_state.titanic_encoded = df_clean
                     st.info("No se encontraron columnas categóricas para codificar")
 
         # Etapa 5: Normalización
-        with tab4:
+        with tab5:
             st.markdown("### 📏 Etapa 5: Normalización de Características")
 
             if 'titanic_encoded' not in st.session_state:
@@ -653,7 +797,7 @@ elif dataset_key == "titanic":
                     st.info("No se encontraron columnas numéricas para normalizar")
 
         # Etapa 6: División Entrenamiento/Prueba
-        with tab5:
+        with tab6:
             st.markdown("### ✂️ Etapa 6: División Entrenamiento/Prueba")
 
             if 'titanic_normalized' not in st.session_state:
@@ -704,7 +848,7 @@ elif dataset_key == "titanic":
                 st.success("✅ División de datos completada con estratificación")
 
         # Resumen de Resultados
-        with tab6:
+        with tab7:
             st.markdown("### 📊 Resumen de Resultados del Preprocesamiento")
 
             if all(key in st.session_state for key in ['titanic_X_train', 'titanic_X_test', 'titanic_y_train', 'titanic_y_test']):
@@ -726,13 +870,13 @@ elif dataset_key == "titanic":
                 st.subheader("Vista Previa de Datos de Entrenamiento")
                 train_preview = st.session_state.titanic_X_train.copy()
                 train_preview['Survived'] = st.session_state.titanic_y_train
-                st.dataframe(train_preview.head(), use_container_width=True)
+                st.dataframe(train_preview.head(), width='stretch')
                 st.write(f"**Shape de datos de entrenamiento:** {st.session_state.titanic_X_train.shape}")
 
                 st.subheader("Vista Previa de Datos de Prueba")
                 test_preview = st.session_state.titanic_X_test.copy()
                 test_preview['Survived'] = st.session_state.titanic_y_test
-                st.dataframe(test_preview.head(), use_container_width=True)
+                st.dataframe(test_preview.head(), width='stretch')
 
                 # Opciones de exportación
                 st.subheader("💾 Exportar Datos Procesados")
@@ -766,7 +910,7 @@ elif dataset_key == "titanic":
 
 elif dataset_key == "student_performance":
     # Student Performance Dataset Page
-    st.markdown('<div class="main-header">📚 Student Performance Dataset - Grade Prediction</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">📚 Conjunto de Datos de Rendimiento Estudiantil - Predicción de Calificaciones</div>', unsafe_allow_html=True)
 
     st.markdown("""
     ### 📋 Resumen del Conjunto de Datos
@@ -782,116 +926,198 @@ elif dataset_key == "student_performance":
     **Tipo de problema**: Regresión (predicción de calificación continua).
     """)
 
-    # Stage 1: Data Loading
-    st.markdown('<div class="section-header">📊 Stage 1: Data Loading</div>', unsafe_allow_html=True)
+    # Etapa 1: Carga de Datos
+    st.markdown('<div class="section-header">📊 Etapa 1: Carga de Datos</div>', unsafe_allow_html=True)
 
-    if st.button("🔄 Load Student Performance Dataset", type="primary"):
+    if st.button("🔄 Cargar Conjunto de Rendimiento Estudiantil", type="primary"):
         df = load_student_performance_data()
 
         if df is not None:
             st.session_state.student_raw = df.copy()
-            st.success(f"✅ Dataset loaded successfully! Shape: {df.shape[0]} rows × {df.shape[1]} columns")
+            st.success(f"✅ ¡Conjunto de datos cargado exitosamente! Forma: {df.shape[0]} filas × {df.shape[1]} columnas")
 
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("Total Students", f"{df.shape[0]:,}")
+                st.metric("Total de Estudiantes", f"{df.shape[0]:,}")
             with col2:
                 avg_grade = df['G3'].mean()
-                st.metric("Average Final Grade", f"{avg_grade:.1f}")
+                st.metric("Calificación Final Promedio", f"{avg_grade:.1f}")
             with col3:
                 passing_rate = (df['G3'] >= 10).mean() * 100  # Assuming 10 is passing grade
-                st.metric("Passing Rate", f"{passing_rate:.1f}%")
+                st.metric("Tasa de Aprobación", f"{passing_rate:.1f}%")
 
-            st.dataframe(df.head(), use_container_width=True)
+            st.dataframe(df.head(), width='stretch')
         else:
-            st.error("❌ Failed to load dataset")
+            st.error("❌ Error al cargar el conjunto de datos")
 
     # Check if data is loaded
     if 'student_raw' not in st.session_state:
-        st.info("👆 Please load the dataset first to continue with preprocessing.")
+        st.info("👆 Por favor carga el conjunto de datos primero para continuar con el preprocesamiento.")
     else:
         df = st.session_state.student_raw
 
         # Create tabs for preprocessing stages
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-            "🔍 Exploration",
-            "🧹 Cleaning",
-            "🔤 Encoding",
-            "📏 Normalization",
-            "✂️ Train/Test Split",
-            "📊 Results Summary"
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+            "🔍 Exploración",
+            "📈 Calidad de Datos",
+            "🧹 Limpieza",
+            "🔤 Codificación",
+            "📏 Normalización",
+            "✂️ División Entrenamiento/Prueba",
+            "📊 Resumen Resultados"
         ])
 
-        # Stage 2: Data Exploration
+        # Etapa 2: Exploración de Datos
         with tab1:
-            st.markdown("### 🔍 Stage 2: Data Exploration")
+            st.markdown("### 🔍 Etapa 2: Exploración de Datos")
 
             col1, col2 = st.columns(2)
 
             with col1:
-                st.subheader("Data Types")
+                st.subheader("Tipos de Datos")
                 dtypes_df = pd.DataFrame({
-                    'Column': df.columns,
-                    'Type': df.dtypes.astype(str)
+                    'Columna': df.columns,
+                    'Tipo': df.dtypes.astype(str)
                 })
-                st.dataframe(dtypes_df, use_container_width=True)
+                st.dataframe(dtypes_df, width='stretch')
 
             with col2:
-                st.subheader("Missing Values")
+                st.subheader("Valores Faltantes")
                 null_counts = df.isnull().sum()
                 if null_counts.sum() == 0:
-                    st.success("✅ No missing values found")
+                    st.success("✅ No se encontraron valores faltantes")
                 else:
                     null_df = pd.DataFrame({
-                        'Column': null_counts.index,
-                        'Missing': null_counts.values,
-                        'Percentage': (null_counts / len(df) * 100).round(2)
+                        'Columna': null_counts.index,
+                        'Faltantes': null_counts.values,
+                        'Porcentaje': (null_counts / len(df) * 100).round(2)
                     })
-                    st.dataframe(null_df[null_df['Missing'] > 0], use_container_width=True)
+                    st.dataframe(null_df[null_df['Faltantes'] > 0], width='stretch')
 
-            # Basic statistics
-            st.subheader("Statistical Summary")
-            st.dataframe(df.describe(), use_container_width=True)
+            # Estadísticas básicas
+            st.subheader("Resumen Estadístico")
+            st.dataframe(df.describe(), width='stretch')
 
-            # Grade distribution
-            st.subheader("Grade Distribution")
+            # Distribución de calificaciones
+            st.subheader("Distribución de Calificaciones")
             fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12, 8))
 
             # G1 distribution
             ax1.hist(df['G1'], bins=20, alpha=0.7, color='#1f77b4', edgecolor='black')
-            ax1.set_title('First Period Grade (G1)')
-            ax1.set_xlabel('Grade')
-            ax1.set_ylabel('Frequency')
+            ax1.set_title('Calificación del Primer Periodo (G1)')
+            ax1.set_xlabel('Calificación')
+            ax1.set_ylabel('Frecuencia')
             ax1.grid(True, alpha=0.3)
 
             # G2 distribution
             ax2.hist(df['G2'], bins=20, alpha=0.7, color='#ff7f0e', edgecolor='black')
-            ax2.set_title('Second Period Grade (G2)')
-            ax2.set_xlabel('Grade')
-            ax2.set_ylabel('Frequency')
+            ax2.set_title('Calificación del Segundo Periodo (G2)')
+            ax2.set_xlabel('Calificación')
+            ax2.set_ylabel('Frecuencia')
             ax2.grid(True, alpha=0.3)
 
             # G3 distribution
             ax3.hist(df['G3'], bins=20, alpha=0.7, color='#2ca02c', edgecolor='black')
-            ax3.set_title('Final Grade (G3) - Target')
-            ax3.set_xlabel('Grade')
-            ax3.set_ylabel('Frequency')
+            ax3.set_title('Calificación Final (G3) - Objetivo')
+            ax3.set_xlabel('Calificación')
+            ax3.set_ylabel('Frecuencia')
             ax3.grid(True, alpha=0.3)
 
             # Study time vs Final grade
             study_grades = df.groupby('studytime')['G3'].mean()
             ax4.bar(study_grades.index, study_grades.values, color='#d62728', alpha=0.7)
-            ax4.set_title('Average Final Grade by Study Time')
-            ax4.set_xlabel('Study Time (hours)')
-            ax4.set_ylabel('Average Final Grade')
+            ax4.set_title('Calificación Final Promedio por Tiempo de Estudio')
+            ax4.set_xlabel('Tiempo de Estudio (horas)')
+            ax4.set_ylabel('Calificación Final Promedio')
             ax4.grid(True, alpha=0.3)
 
             plt.tight_layout()
             st.pyplot(fig)
 
-        # Stage 3: Data Cleaning
+        # 📈 Calidad de Datos
         with tab2:
-            st.markdown("### 🧹 Stage 3: Data Cleaning")
+            st.markdown("### 📈 Calidad de Datos")
+
+            # Calculate data quality metrics
+            quality_metrics = calculate_data_quality_metrics(df, "Student Performance")
+
+            # Quality Score Overview
+            st.subheader("📊 Puntaje de Calidad General")
+
+            col1, col2, col3, col4 = st.columns(4)
+
+            with col1:
+                completeness_score = quality_metrics['completeness']
+                completeness_color = "🟢" if completeness_score >= 95 else "🟡" if completeness_score >= 85 else "🔴"
+                st.metric("Completitud", f"{completeness_score:.1f}%", delta=None, delta_color="normal")
+                st.write(f"{completeness_color} **Interpretación:** {'Excelente' if completeness_score >= 95 else 'Buena' if completeness_score >= 85 else 'Requiere atención'}")
+
+            with col2:
+                total_outliers = sum(info['outliers_count'] for info in quality_metrics['outliers'].values())
+                outlier_percentage = (total_outliers / quality_metrics['total_rows']) * 100
+                outlier_color = "🟢" if outlier_percentage < 5 else "🟡" if outlier_percentage < 10 else "🔴"
+                st.metric("Outliers Detectados", f"{total_outliers} ({outlier_percentage:.1f}%)")
+                st.write(f"{outlier_color} **Interpretación:** {'Mínimos' if outlier_percentage < 5 else 'Moderados' if outlier_percentage < 10 else 'Significativos'}")
+
+            with col3:
+                st.metric("Columnas Numéricas", quality_metrics['summary']['numeric_columns'])
+                st.write("**Tipos de datos:**")
+                for dtype, count in quality_metrics['data_types'].items():
+                    st.write(f"- {dtype}: {count}")
+
+            with col4:
+                st.metric("Columnas Categóricas", quality_metrics['summary']['categorical_columns'])
+                st.write("**Dimensiones:**")
+                st.write(f"- {quality_metrics['summary']['shape']}")
+
+            # Potential Issues Alert
+            if quality_metrics['summary']['potential_issues'][0] != "Datos de buena calidad":
+                st.warning("⚠️ **Problemas Potenciales Detectados:**")
+                for issue in quality_metrics['summary']['potential_issues']:
+                    st.write(f"• {issue}")
+            else:
+                st.success("✅ **Análisis de Calidad:** Datos de buena calidad detectados")
+
+            # Detailed Outlier Analysis
+            st.subheader("🔍 Análisis Detallado de Outliers")
+            outlier_df = pd.DataFrame({
+                'Columna': list(quality_metrics['outliers'].keys()),
+                'Outliers': [info['outliers_count'] for info in quality_metrics['outliers'].values()],
+                'Porcentaje': [f"{info['outliers_percentage']:.2f}%" for info in quality_metrics['outliers'].values()]
+            })
+            st.dataframe(outlier_df, width='stretch')
+
+            # Uniqueness Analysis
+            st.subheader("🎯 Análisis de Unicidad")
+            uniqueness_df = pd.DataFrame({
+                'Columna': list(quality_metrics['uniqueness'].keys()),
+                'Unicidad (%)': [f"{val:.2f}%" for val in quality_metrics['uniqueness'].values()]
+            })
+            st.dataframe(uniqueness_df, width='stretch')
+
+            # Quality Recommendations
+            st.subheader("💡 Recomendaciones para Mejorar la Calidad")
+
+            recommendations = []
+
+            if quality_metrics['completeness'] < 95:
+                recommendations.append("• Considerar técnicas de imputación para valores faltantes (media, mediana, moda)")
+                recommendations.append("• Evaluar si los valores faltantes siguen un patrón específico")
+
+            if total_outliers > quality_metrics['total_rows'] * 0.1:
+                recommendations.append("• Investigar outliers para determinar si son errores de medición o valores válidos extremos")
+                recommendations.append("• Considerar técnicas robustas de escalado (RobustScaler) o transformación de datos")
+
+            if len(recommendations) == 0:
+                recommendations.append("• Los datos muestran buena calidad general")
+                recommendations.append("• Proceder con el preprocesamiento estándar")
+
+            for rec in recommendations:
+                st.write(rec)
+
+        # Etapa 3: Limpieza de Datos
+        with tab3:
+            st.markdown("### 🧹 Etapa 3: Limpieza de Datos")
 
             # For student performance dataset, minimal cleaning needed
             # No irrelevant columns to remove, no missing values
@@ -909,30 +1135,30 @@ elif dataset_key == "student_performance":
             col1, col2 = st.columns(2)
 
             with col1:
-                st.subheader("Before Cleaning")
-                st.metric("Rows", df.shape[0])
-                st.metric("Columns", df.shape[1])
-                st.metric("Missing Values", df.isnull().sum().sum())
+                st.subheader("Antes de la Limpieza")
+                st.metric("Filas", df.shape[0])
+                st.metric("Columnas", df.shape[1])
+                st.metric("Valores Faltantes", df.isnull().sum().sum())
 
             with col2:
-                st.subheader("After Cleaning")
-                st.metric("Rows", df_clean.shape[0])
-                st.metric("Columns", df_clean.shape[1])
-                st.metric("Missing Values", df_clean.isnull().sum().sum())
+                st.subheader("Después de la Limpieza")
+                st.metric("Filas", df_clean.shape[0])
+                st.metric("Columnas", df_clean.shape[1])
+                st.metric("Valores Faltantes", df_clean.isnull().sum().sum())
 
             if initial_rows > final_rows:
-                st.success(f"✅ Removed {initial_rows - final_rows} duplicate rows")
+                st.success(f"✅ Eliminadas {initial_rows - final_rows} filas duplicadas")
             else:
-                st.success("✅ Dataset was already clean - no duplicates or missing values")
+                st.success("✅ El conjunto de datos ya estaba limpio - no hay duplicados ni valores faltantes")
 
-            st.dataframe(df_clean.head(), use_container_width=True)
+            st.dataframe(df_clean.head(), width='stretch')
 
-        # Stage 4: Encoding
-        with tab3:
-            st.markdown("### 🔤 Stage 4: Categorical Encoding")
+        # Etapa 4: Codificación
+        with tab4:
+            st.markdown("### 🔤 Etapa 4: Codificación Categórica")
 
             if 'student_clean' not in st.session_state:
-                st.warning("Please complete data cleaning first")
+                st.warning("Por favor complete la limpieza de datos primero")
             else:
                 df_clean = st.session_state.student_clean
 
@@ -958,7 +1184,7 @@ elif dataset_key == "student_performance":
                     st.session_state.student_encoding_map = encoding_map
 
                     # Show encoding mapping (first few columns)
-                    st.subheader("Encoding Mapping (First 5 columns)")
+                    st.subheader("Mapeo de Codificación (Primeras 5 columnas)")
                     for i, (col, mapping) in enumerate(list(encoding_map.items())[:5]):
                         st.write(f"**{col}:**")
                         for original, encoded in mapping.items():
@@ -967,20 +1193,20 @@ elif dataset_key == "student_performance":
                             st.write("---")
 
                     if len(encoding_map) > 5:
-                        st.info(f"... and {len(encoding_map) - 5} more categorical columns encoded")
+                        st.info(f"... y {len(encoding_map) - 5} más columnas categóricas codificadas")
 
-                    st.dataframe(df_encoded.head(), use_container_width=True)
-                    st.success(f"✅ {len(categorical_cols)} categorical variables encoded successfully")
+                    st.dataframe(df_encoded.head(), width='stretch')
+                    st.success(f"✅ {len(categorical_cols)} variables categóricas codificadas exitosamente")
                 else:
                     st.session_state.student_encoded = df_clean
-                    st.info("No categorical columns found to encode")
+                    st.info("No se encontraron columnas categóricas para codificar")
 
-        # Stage 5: Normalization
-        with tab4:
-            st.markdown("### 📏 Stage 5: Feature Normalization")
+        # Etapa 5: Normalización
+        with tab5:
+            st.markdown("### 📏 Etapa 5: Normalización de Características")
 
             if 'student_encoded' not in st.session_state:
-                st.warning("Please complete encoding first")
+                st.warning("Por favor complete la codificación primero")
             else:
                 df_encoded = st.session_state.student_encoded
 
@@ -1001,31 +1227,31 @@ elif dataset_key == "student_performance":
                     st.session_state.student_scaler = scaler
 
                     # Show comparison for key columns
-                    st.subheader("Normalization Comparison (Key Features)")
+                    st.subheader("Comparación de Normalización (Características Clave)")
                     key_cols = ['age', 'absences', 'G1', 'G2']  # Show only key columns for readability
                     key_cols = [col for col in key_cols if col in numerical_cols]
 
                     col1, col2 = st.columns(2)
 
                     with col1:
-                        st.write("**Before Normalization**")
+                        st.write("**Antes de la Normalización**")
                         st.dataframe(df_encoded[key_cols].describe())
 
                     with col2:
-                        st.write("**After Normalization**")
+                        st.write("**Después de la Normalización**")
                         st.dataframe(df_normalized[key_cols].describe())
 
-                    st.success(f"✅ {len(numerical_cols)} numerical features normalized with Standard Scaler")
+                    st.success(f"✅ {len(numerical_cols)} características numéricas normalizadas con Standard Scaler")
                 else:
                     st.session_state.student_normalized = df_encoded
-                    st.info("No numerical columns found to normalize")
+                    st.info("No se encontraron columnas numéricas para normalizar")
 
-        # Stage 6: Train/Test Split
-        with tab5:
-            st.markdown("### ✂️ Stage 6: Train/Test Split")
+        # Etapa 6: División Entrenamiento/Prueba
+        with tab6:
+            st.markdown("### ✂️ Etapa 6: División Entrenamiento/Prueba")
 
             if 'student_normalized' not in st.session_state:
-                st.warning("Please complete normalization first")
+                st.warning("Por favor complete la normalización primero")
             else:
                 df_normalized = st.session_state.student_normalized
 
@@ -1048,94 +1274,94 @@ elif dataset_key == "student_performance":
                 col1, col2 = st.columns(2)
 
                 with col1:
-                    st.subheader("Training Set")
-                    st.metric("X_train shape", f"{X_train.shape[0]} × {X_train.shape[1]}")
-                    st.metric("y_train shape", f"{y_train.shape[0]}")
+                    st.subheader("Conjunto de Entrenamiento")
+                    st.metric("Forma X_train", f"{X_train.shape[0]} × {X_train.shape[1]}")
+                    st.metric("Forma y_train", f"{y_train.shape[0]}")
 
                     # Grade statistics in train
-                    st.write("**Grade statistics (G3):**")
-                    st.write(f"- Mean: {y_train.mean():.2f}")
-                    st.write(f"- Min: {y_train.min()}")
-                    st.write(f"- Max: {y_train.max()}")
+                    st.write("**Estadísticas de calificación (G3):**")
+                    st.write(f"- Media: {y_train.mean():.2f}")
+                    st.write(f"- Mín: {y_train.min()}")
+                    st.write(f"- Máx: {y_train.max()}")
 
                 with col2:
-                    st.subheader("Test Set")
-                    st.metric("X_test shape", f"{X_test.shape[0]} × {X_test.shape[1]}")
-                    st.metric("y_test shape", f"{y_test.shape[0]}")
+                    st.subheader("Conjunto de Prueba")
+                    st.metric("Forma X_test", f"{X_test.shape[0]} × {X_test.shape[1]}")
+                    st.metric("Forma y_test", f"{y_test.shape[0]}")
 
                     # Grade statistics in test
-                    st.write("**Grade statistics (G3):**")
-                    st.write(f"- Mean: {y_test.mean():.2f}")
-                    st.write(f"- Min: {y_test.min()}")
-                    st.write(f"- Max: {y_test.max()}")
+                    st.write("**Estadísticas de calificación (G3):**")
+                    st.write(f"- Media: {y_test.mean():.2f}")
+                    st.write(f"- Mín: {y_test.min()}")
+                    st.write(f"- Máx: {y_test.max()}")
 
-                st.success("✅ Data split completed (80% train, 20% test)")
+                st.success("✅ División de datos completada (80% entrenamiento, 20% prueba)")
 
-        # Results Summary
-        with tab6:
-            st.markdown("### 📊 Preprocessing Results Summary")
+        # Resumen de Resultados
+        with tab7:
+            st.markdown("### 📊 Resumen de Resultados del Preprocesamiento")
 
             if all(key in st.session_state for key in ['student_X_train', 'student_X_test', 'student_y_train', 'student_y_test']):
-                st.markdown('<div class="success-message">🎉 All preprocessing stages completed successfully!</div>', unsafe_allow_html=True)
+                st.markdown('<div class="success-message">🎉 ¡Todas las etapas de preprocesamiento completadas exitosamente!</div>', unsafe_allow_html=True)
 
                 # Summary metrics
                 col1, col2, col3, col4 = st.columns(4)
 
                 with col1:
-                    st.metric("Original Rows", f"{st.session_state.student_raw.shape[0]:,}")
+                    st.metric("Filas Originales", f"{st.session_state.student_raw.shape[0]:,}")
                 with col2:
-                    st.metric("Final Rows", f"{st.session_state.student_X_train.shape[0] + st.session_state.student_X_test.shape[0]:,}")
+                    st.metric("Filas Finales", f"{st.session_state.student_X_train.shape[0] + st.session_state.student_X_test.shape[0]:,}")
                 with col3:
-                    st.metric("Features", st.session_state.student_X_train.shape[1])
+                    st.metric("Características", st.session_state.student_X_train.shape[1])
                 with col4:
-                    st.metric("Train/Test Ratio", "80/20")
+                    st.metric("Relación Entrenamiento/Prueba", "80/20")
 
                 # Show final datasets
                 st.subheader("Vista Previa de Datos de Entrenamiento")
                 train_preview = st.session_state.student_X_train.copy()
                 train_preview['G3'] = st.session_state.student_y_train
-                st.dataframe(train_preview.head(), use_container_width=True)
+                st.dataframe(train_preview.head(), width='stretch')
                 st.write(f"**Shape de datos de entrenamiento:** {st.session_state.student_X_train.shape}")
 
                 st.subheader("Vista Previa de Datos de Prueba")
                 test_preview = st.session_state.student_X_test.copy()
                 test_preview['G3'] = st.session_state.student_y_test
-                st.dataframe(test_preview.head(), use_container_width=True)
+                st.dataframe(test_preview.head(), width='stretch')
                 st.write(f"**Shape de datos de prueba:** {st.session_state.student_X_test.shape}")
 
                 # Export options
-                st.subheader("💾 Export Processed Data")
+                st.subheader("💾 Exportar Datos Procesados")
                 col1, col2 = st.columns(2)
 
                 with col1:
-                    if st.button("📊 Export Training Data", key="student_train_export"):
+                    if st.button("📊 Exportar Datos de Entrenamiento", key="student_train_export"):
                         train_df = st.session_state.student_X_train.copy()
                         train_df['G3'] = st.session_state.student_y_train
                         csv = train_df.to_csv(index=False)
                         st.download_button(
-                            "📥 Download Training CSV",
+                            "📥 Descargar CSV de Entrenamiento",
                             csv,
                             "student_performance_train_processed.csv",
                             "text/csv"
                         )
 
                 with col2:
-                    if st.button("📊 Export Test Data", key="student_test_export"):
+                    if st.button("📊 Exportar Datos de Prueba", key="student_test_export"):
                         test_df = st.session_state.student_X_test.copy()
                         test_df['G3'] = st.session_state.student_y_test
                         csv = test_df.to_csv(index=False)
                         st.download_button(
-                            "📥 Download Test CSV",
+                            "📥 Descargar CSV de Prueba",
                             csv,
                             "student_performance_test_processed.csv",
                             "text/csv"
                         )
             else:
-                st.warning("Please complete all preprocessing stages to see the summary")
+                st.warning("Por favor complete todas las etapas de preprocesamiento para ver el resumen")
 
 elif dataset_key == "iris":
     # Iris Dataset Page
-    st.markdown('<div class="main-header">🌸 Iris Dataset - Species Classification</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">🌸 Conjunto de Datos Iris - Clasificación de Especies</div>', unsafe_allow_html=True)
 
     st.markdown("""
     ### 📋 Resumen del Conjunto de Datos
@@ -1151,109 +1377,110 @@ elif dataset_key == "iris":
     **Tipo de problema**: Clasificación multiclase (3 especies: setosa, versicolor, virginica).
     """)
 
-    # Stage 1: Data Loading
-    st.markdown('<div class="section-header">📊 Stage 1: Data Loading</div>', unsafe_allow_html=True)
+    # Etapa 1: Carga de Datos
+    st.markdown('<div class="section-header">📊 Etapa 1: Carga de Datos</div>', unsafe_allow_html=True)
 
-    if st.button("🔄 Load Iris Dataset", type="primary"):
+    if st.button("🔄 Cargar Conjunto de Datos Iris", type="primary"):
         df = load_iris_data()
 
         if df is not None:
             st.session_state.iris_raw = df.copy()
-            st.success(f"✅ Dataset loaded successfully! Shape: {df.shape[0]} rows × {df.shape[1]} columns")
+            st.success(f"✅ ¡Conjunto de datos cargado exitosamente! Forma: {df.shape[0]} filas × {df.shape[1]} columnas")
 
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("Total Flowers", f"{df.shape[0]:,}")
+                st.metric("Total de Flores", f"{df.shape[0]:,}")
             with col2:
                 species_count = df['species'].nunique()
-                st.metric("Species Count", species_count)
+                st.metric("Número de Especies", species_count)
             with col3:
                 most_common = df['species'].mode()[0]
-                st.metric("Most Common Species", most_common)
+                st.metric("Especie Más Común", most_common)
 
-            st.dataframe(df.head(), use_container_width=True)
+            st.dataframe(df.head(), width='stretch')
         else:
-            st.error("❌ Failed to load dataset")
+            st.error("❌ Error al cargar el conjunto de datos")
 
     # Check if data is loaded
     if 'iris_raw' not in st.session_state:
-        st.info("👆 Please load the dataset first to continue with preprocessing.")
+        st.info("👆 Por favor carga el conjunto de datos primero para continuar con el preprocesamiento.")
     else:
         df = st.session_state.iris_raw
 
         # Create tabs for preprocessing stages
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-            "🔍 Exploration",
-            "🧹 Cleaning",
-            "🔤 Encoding",
-            "📏 Normalization",
-            "✂️ Train/Test Split",
-            "📊 Results Summary"
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+            "🔍 Exploración",
+            "📈 Calidad de Datos",
+            "🧹 Limpieza",
+            "🔤 Codificación",
+            " Normalización",
+            "✂️ División Entrenamiento/Prueba",
+            "📊 Resumen de Resultados"
         ])
 
-        # Stage 2: Data Exploration
+        # Etapa 2: Exploración de Datos
         with tab1:
-            st.markdown("### 🔍 Stage 2: Data Exploration")
+            st.markdown("### 🔍 Etapa 2: Exploración de Datos")
 
             col1, col2 = st.columns(2)
 
             with col1:
-                st.subheader("Data Types")
+                st.subheader("Tipos de Datos")
                 dtypes_df = pd.DataFrame({
-                    'Column': df.columns,
-                    'Type': df.dtypes.astype(str)
+                    'Columna': df.columns,
+                    'Tipo': df.dtypes.astype(str)
                 })
-                st.dataframe(dtypes_df, use_container_width=True)
+                st.dataframe(dtypes_df, width='stretch')
 
             with col2:
-                st.subheader("Missing Values")
+                st.subheader("Valores Faltantes")
                 null_counts = df.isnull().sum()
                 if null_counts.sum() == 0:
-                    st.success("✅ No missing values found")
+                    st.success("✅ No se encontraron valores faltantes")
                 else:
                     null_df = pd.DataFrame({
-                        'Column': null_counts.index,
-                        'Missing': null_counts.values,
-                        'Percentage': (null_counts / len(df) * 100).round(2)
+                        'Columna': null_counts.index,
+                        'Faltantes': null_counts.values,
+                        'Porcentaje': (null_counts / len(df) * 100).round(2)
                     })
-                    st.dataframe(null_df[null_df['Missing'] > 0], use_container_width=True)
+                    st.dataframe(null_df[null_df['Faltantes'] > 0], width='stretch')
 
-            # Basic statistics
-            st.subheader("Statistical Summary")
-            st.dataframe(df.describe(), use_container_width=True)
+            # Estadísticas básicas
+            st.subheader("Resumen Estadístico")
+            st.dataframe(df.describe(), width='stretch')
 
-            # Species distribution and feature analysis
-            st.subheader("Dataset Analysis")
+            # Distribución de especies y análisis de características
+            st.subheader("Análisis del Conjunto de Datos")
 
             col1, col2 = st.columns(2)
 
             with col1:
-                # Species distribution
-                st.write("**Species Distribution**")
+                # Distribución de especies
+                st.write("**Distribución de Especies**")
                 species_counts = df['species'].value_counts()
                 fig, ax = plt.subplots(figsize=(8, 6))
                 colors = ['#1f77b4', '#ff7f0e', '#2ca02c']
                 ax.bar(species_counts.index, species_counts.values, color=colors, alpha=0.7)
-                ax.set_title('Distribution of Iris Species')
-                ax.set_xlabel('Species')
-                ax.set_ylabel('Count')
+                ax.set_title('Distribución de Especies de Iris')
+                ax.set_xlabel('Especies')
+                ax.set_ylabel('Conteo')
                 plt.xticks(rotation=45)
                 st.pyplot(fig)
 
             with col2:
-                # Feature correlations
-                st.write("**Feature Correlations**")
+                # Correlaciones de características
+                st.write("**Correlaciones de Características**")
                 numeric_cols = df.select_dtypes(include=[np.number]).columns
                 if len(numeric_cols) > 1:
                     corr_matrix = df[numeric_cols].corr()
                     fig, ax = plt.subplots(figsize=(8, 6))
                     sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', center=0,
                                square=True, ax=ax)
-                    ax.set_title('Feature Correlation Matrix')
+                    ax.set_title('Matriz de Correlación de Características')
                     st.pyplot(fig)
 
-            # Feature distributions by species
-            st.subheader("Feature Distributions by Species")
+            # Distribuciones de características por especie
+            st.subheader("Distribuciones de Características por Especie")
             feature_cols = ['sepal length (cm)', 'sepal width (cm)', 'petal length (cm)', 'petal width (cm)']
 
             fig, axes = plt.subplots(2, 2, figsize=(12, 10))
@@ -1268,17 +1495,98 @@ elif dataset_key == "iris":
                     species_data = df[df['species'] == species][feature]
                     ax.hist(species_data, alpha=0.7, label=species, color=colors[j], bins=15)
                 ax.set_title(f'{feature}')
-                ax.set_xlabel('Value (cm)')
-                ax.set_ylabel('Frequency')
+                ax.set_xlabel('Valor (cm)')
+                ax.set_ylabel('Frecuencia')
                 ax.legend()
                 ax.grid(True, alpha=0.3)
 
             plt.tight_layout()
             st.pyplot(fig)
 
-        # Stage 3: Data Cleaning
+        # 📈 Calidad de Datos
         with tab2:
-            st.markdown("### 🧹 Stage 3: Data Cleaning")
+            st.markdown("### 📈 Calidad de Datos")
+
+            # Calculate data quality metrics
+            quality_metrics = calculate_data_quality_metrics(df, "Iris")
+
+            # Quality Score Overview
+            st.subheader("📊 Puntaje de Calidad General")
+
+            col1, col2, col3, col4 = st.columns(4)
+
+            with col1:
+                completeness_score = quality_metrics['completeness']
+                completeness_color = "🟢" if completeness_score >= 95 else "🟡" if completeness_score >= 85 else "🔴"
+                st.metric("Completitud", f"{completeness_score:.1f}%", delta=None, delta_color="normal")
+                st.write(f"{completeness_color} **Interpretación:** {'Excelente' if completeness_score >= 95 else 'Buena' if completeness_score >= 85 else 'Requiere atención'}")
+
+            with col2:
+                total_outliers = sum(info['outliers_count'] for info in quality_metrics['outliers'].values())
+                outlier_percentage = (total_outliers / quality_metrics['total_rows']) * 100
+                outlier_color = "🟢" if outlier_percentage < 5 else "🟡" if outlier_percentage < 10 else "🔴"
+                st.metric("Outliers Detectados", f"{total_outliers} ({outlier_percentage:.1f}%)")
+                st.write(f"{outlier_color} **Interpretación:** {'Mínimos' if outlier_percentage < 5 else 'Moderados' if outlier_percentage < 10 else 'Significativos'}")
+
+            with col3:
+                st.metric("Columnas Numéricas", quality_metrics['summary']['numeric_columns'])
+                st.write("**Tipos de datos:**")
+                for dtype, count in quality_metrics['data_types'].items():
+                    st.write(f"- {dtype}: {count}")
+
+            with col4:
+                st.metric("Columnas Categóricas", quality_metrics['summary']['categorical_columns'])
+                st.write("**Dimensiones:**")
+                st.write(f"- {quality_metrics['summary']['shape']}")
+
+            # Potential Issues Alert
+            if quality_metrics['summary']['potential_issues'][0] != "Datos de buena calidad":
+                st.warning("⚠️ **Problemas Potenciales Detectados:**")
+                for issue in quality_metrics['summary']['potential_issues']:
+                    st.write(f"• {issue}")
+            else:
+                st.success("✅ **Análisis de Calidad:** Datos de buena calidad detectados")
+
+            # Detailed Outlier Analysis
+            st.subheader("🔍 Análisis Detallado de Outliers")
+            outlier_df = pd.DataFrame({
+                'Columna': list(quality_metrics['outliers'].keys()),
+                'Outliers': [info['outliers_count'] for info in quality_metrics['outliers'].values()],
+                'Porcentaje': [f"{info['outliers_percentage']:.2f}%" for info in quality_metrics['outliers'].values()]
+            })
+            st.dataframe(outlier_df, width='stretch')
+
+            # Uniqueness Analysis
+            st.subheader("🎯 Análisis de Unicidad")
+            uniqueness_df = pd.DataFrame({
+                'Columna': list(quality_metrics['uniqueness'].keys()),
+                'Unicidad (%)': [f"{val:.2f}%" for val in quality_metrics['uniqueness'].values()]
+            })
+            st.dataframe(uniqueness_df, width='stretch')
+
+            # Quality Recommendations
+            st.subheader("💡 Recomendaciones para Mejorar la Calidad")
+
+            recommendations = []
+
+            if quality_metrics['completeness'] < 95:
+                recommendations.append("• Considerar técnicas de imputación para valores faltantes (media, mediana, moda)")
+                recommendations.append("• Evaluar si los valores faltantes siguen un patrón específico")
+
+            if total_outliers > quality_metrics['total_rows'] * 0.1:
+                recommendations.append("• Investigar outliers para determinar si son errores de medición o valores válidos extremos")
+                recommendations.append("• Considerar técnicas robustas de escalado (RobustScaler) o transformación de datos")
+
+            if len(recommendations) == 0:
+                recommendations.append("• Los datos muestran buena calidad general")
+                recommendations.append("• Proceder con el preprocesamiento estándar")
+
+            for rec in recommendations:
+                st.write(rec)
+
+        # Etapa 3: Limpieza de Datos
+        with tab3:
+            st.markdown("### 🧹 Etapa 3: Limpieza de Datos")
 
             # For Iris dataset, minimal cleaning needed
             # No irrelevant columns to remove, no missing values
@@ -1296,30 +1604,30 @@ elif dataset_key == "iris":
             col1, col2 = st.columns(2)
 
             with col1:
-                st.subheader("Before Cleaning")
-                st.metric("Rows", df.shape[0])
-                st.metric("Columns", df.shape[1])
-                st.metric("Missing Values", df.isnull().sum().sum())
+                st.subheader("Antes de la Limpieza")
+                st.metric("Filas", df.shape[0])
+                st.metric("Columnas", df.shape[1])
+                st.metric("Valores Faltantes", df.isnull().sum().sum())
 
             with col2:
-                st.subheader("After Cleaning")
-                st.metric("Rows", df_clean.shape[0])
-                st.metric("Columns", df_clean.shape[1])
-                st.metric("Missing Values", df_clean.isnull().sum().sum())
+                st.subheader("Después de la Limpieza")
+                st.metric("Filas", df_clean.shape[0])
+                st.metric("Columnas", df_clean.shape[1])
+                st.metric("Valores Faltantes", df_clean.isnull().sum().sum())
 
             if initial_rows > final_rows:
-                st.success(f"✅ Removed {initial_rows - final_rows} duplicate rows")
+                st.success(f"✅ Eliminadas {initial_rows - final_rows} filas duplicadas")
             else:
-                st.success("✅ Dataset was already clean - no duplicates or missing values")
+                st.success("✅ El conjunto de datos ya estaba limpio - no hay duplicados ni valores faltantes")
 
-            st.dataframe(df_clean.head(), use_container_width=True)
+            st.dataframe(df_clean.head(), width='stretch')
 
-        # Stage 4: Encoding
-        with tab3:
-            st.markdown("### 🔤 Stage 4: Categorical Encoding")
+        # Etapa 4: Codificación
+        with tab4:
+            st.markdown("### 🔤 Etapa 4: Codificación Categórica")
 
             if 'iris_clean' not in st.session_state:
-                st.warning("Please complete data cleaning first")
+                st.warning("Por favor complete la limpieza de datos primero")
             else:
                 df_clean = st.session_state.iris_clean
 
@@ -1340,23 +1648,23 @@ elif dataset_key == "iris":
                     st.session_state.iris_encoding_map = encoding_map
 
                     # Show encoding mapping
-                    st.subheader("Encoding Mapping")
-                    st.write("**species (target variable):**")
+                    st.subheader("Mapeo de Codificación")
+                    st.write("**species (variable objetivo):**")
                     for original, encoded in encoding_map['species'].items():
                         st.write(f"  `{original}` → `{encoded}`")
 
-                    st.dataframe(df_encoded.head(), use_container_width=True)
-                    st.success("✅ Species variable encoded successfully")
+                    st.dataframe(df_encoded.head(), width='stretch')
+                    st.success("✅ Variable de especies codificada exitosamente")
                 else:
                     st.session_state.iris_encoded = df_clean
-                    st.info("No categorical columns found to encode")
+                    st.info("No se encontraron columnas categóricas para codificar")
 
-        # Stage 5: Normalization
-        with tab4:
-            st.markdown("### 📏 Stage 5: Feature Normalization")
+        # Etapa 5: Normalización
+        with tab5:
+            st.markdown("### 📏 Etapa 5: Normalización de Características")
 
             if 'iris_encoded' not in st.session_state:
-                st.warning("Please complete encoding first")
+                st.warning("Por favor complete la codificación primero")
             else:
                 df_encoded = st.session_state.iris_encoded
 
@@ -1379,43 +1687,43 @@ elif dataset_key == "iris":
                     col1, col2 = st.columns(2)
 
                     with col1:
-                        st.subheader("Before Normalization")
+                        st.subheader("Antes de la Normalización")
                         st.dataframe(df_encoded[numerical_cols].describe())
 
                     with col2:
-                        st.subheader("After Normalization")
+                        st.subheader("Después de la Normalización")
                         st.dataframe(df_normalized[numerical_cols].describe())
 
                     # Visualization of normalization effect
-                    st.subheader("Normalization Effect Visualization")
+                    st.subheader("Visualización del Efecto de Normalización")
                     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
                     # Before normalization
                     df_encoded[numerical_cols].boxplot(ax=ax1)
-                    ax1.set_title('Before Normalization')
-                    ax1.set_ylabel('Value')
+                    ax1.set_title('Antes de la Normalización')
+                    ax1.set_ylabel('Valor')
                     ax1.tick_params(axis='x', rotation=45)
 
                     # After normalization
                     df_normalized[numerical_cols].boxplot(ax=ax2)
-                    ax2.set_title('After Normalization (Standard Scaler)')
-                    ax2.set_ylabel('Standardized Value')
+                    ax2.set_title('Después de la Normalización (Standard Scaler)')
+                    ax2.set_ylabel('Valor Estandarizado')
                     ax2.tick_params(axis='x', rotation=45)
 
                     plt.tight_layout()
                     st.pyplot(fig)
 
-                    st.success("✅ 4 numerical features normalized with Standard Scaler")
+                    st.success("✅ 4 características numéricas normalizadas con Standard Scaler")
                 else:
                     st.session_state.iris_normalized = df_encoded
-                    st.info("No numerical columns found to normalize")
+                    st.info("No se encontraron columnas numéricas para normalizar")
 
-        # Stage 6: Train/Test Split
-        with tab5:
-            st.markdown("### ✂️ Stage 6: Train/Test Split")
+        # Etapa 6: División Entrenamiento/Prueba
+        with tab6:
+            st.markdown("### ✂️ Etapa 6: División Entrenamiento/Prueba")
 
             if 'iris_normalized' not in st.session_state:
-                st.warning("Please complete normalization first")
+                st.warning("Por favor complete la normalización primero")
             else:
                 df_normalized = st.session_state.iris_normalized
 
@@ -1438,99 +1746,99 @@ elif dataset_key == "iris":
                 col1, col2 = st.columns(2)
 
                 with col1:
-                    st.subheader("Training Set")
-                    st.metric("X_train shape", f"{X_train.shape[0]} × {X_train.shape[1]}")
-                    st.metric("y_train shape", f"{y_train.shape[0]}")
+                    st.subheader("Conjunto de Entrenamiento")
+                    st.metric("Forma X_train", f"{X_train.shape[0]} × {X_train.shape[1]}")
+                    st.metric("Forma y_train", f"{y_train.shape[0]}")
 
                     # Class distribution in train
                     train_species = y_train.value_counts().sort_index()
-                    st.write("**Species distribution:**")
+                    st.write("**Distribución de especies:**")
                     species_names = ['setosa', 'versicolor', 'virginica']
                     for i, count in enumerate(train_species):
                         st.write(f"- {species_names[i]}: {count} ({count/len(y_train)*100:.1f}%)")
 
                 with col2:
-                    st.subheader("Test Set")
-                    st.metric("X_test shape", f"{X_test.shape[0]} × {X_test.shape[1]}")
-                    st.metric("y_test shape", f"{y_test.shape[0]}")
+                    st.subheader("Conjunto de Prueba")
+                    st.metric("Forma X_test", f"{X_test.shape[0]} × {X_test.shape[1]}")
+                    st.metric("Forma y_test", f"{y_test.shape[0]}")
 
                     # Class distribution in test
                     test_species = y_test.value_counts().sort_index()
-                    st.write("**Species distribution:**")
+                    st.write("**Distribución de especies:**")
                     for i, count in enumerate(test_species):
                         st.write(f"- {species_names[i]}: {count} ({count/len(y_test)*100:.1f}%)")
 
-                st.success("✅ Data split completed with stratification")
+                st.success("✅ División de datos completada con estratificación")
 
-        # Results Summary
-        with tab6:
-            st.markdown("### 📊 Preprocessing Results Summary")
+        # Resumen de Resultados
+        with tab7:
+            st.markdown("### 📊 Resumen de Resultados del Preprocesamiento")
 
             if all(key in st.session_state for key in ['iris_X_train', 'iris_X_test', 'iris_y_train', 'iris_y_test']):
-                st.markdown('<div class="success-message">🎉 All preprocessing stages completed successfully!</div>', unsafe_allow_html=True)
+                st.markdown('<div class="success-message">🎉 ¡Todas las etapas de preprocesamiento completadas exitosamente!</div>', unsafe_allow_html=True)
 
                 # Summary metrics
                 col1, col2, col3, col4 = st.columns(4)
 
                 with col1:
-                    st.metric("Original Rows", f"{st.session_state.iris_raw.shape[0]:,}")
+                    st.metric("Filas Originales", f"{st.session_state.iris_raw.shape[0]:,}")
                 with col2:
-                    st.metric("Final Rows", f"{st.session_state.iris_X_train.shape[0] + st.session_state.iris_X_test.shape[0]:,}")
+                    st.metric("Filas Finales", f"{st.session_state.iris_X_train.shape[0] + st.session_state.iris_X_test.shape[0]:,}")
                 with col3:
-                    st.metric("Features", st.session_state.iris_X_train.shape[1])
+                    st.metric("Características", st.session_state.iris_X_train.shape[1])
                 with col4:
-                    st.metric("Train/Test Ratio", "70/30")
+                    st.metric("Relación Entrenamiento/Prueba", "70/30")
 
                 # Show final datasets
-                st.subheader("Training Data Preview")
+                st.subheader("Vista Previa de Datos de Entrenamiento")
                 train_preview = st.session_state.iris_X_train.copy()
                 train_preview['species'] = st.session_state.iris_y_train
                 # Convert back to species names for readability
                 species_map = {0: 'setosa', 1: 'versicolor', 2: 'virginica'}
                 train_preview['species'] = train_preview['species'].map(species_map)
-                st.dataframe(train_preview.head(), use_container_width=True)
+                st.dataframe(train_preview.head(), width='stretch')
                 st.write(f"**Shape de datos de entrenamiento:** {st.session_state.iris_X_train.shape}")
 
-                st.subheader("Test Data Preview")
+                st.subheader("Vista Previa de Datos de Prueba")
                 test_preview = st.session_state.iris_X_test.copy()
                 test_preview['species'] = st.session_state.iris_y_test
                 test_preview['species'] = test_preview['species'].map(species_map)
-                st.dataframe(test_preview.head(), use_container_width=True)
+                st.dataframe(test_preview.head(), width='stretch')
                 st.write(f"**Shape de datos de prueba:** {st.session_state.iris_X_test.shape}")
 
                 # Export options
-                st.subheader("💾 Export Processed Data")
+                st.subheader("💾 Exportar Datos Procesados")
                 col1, col2 = st.columns(2)
 
                 with col1:
-                    if st.button("📊 Export Training Data", key="iris_train_export"):
+                    if st.button("📊 Exportar Datos de Entrenamiento", key="iris_train_export"):
                         train_df = st.session_state.iris_X_train.copy()
                         train_df['species'] = st.session_state.iris_y_train
                         # Convert back to species names for export
                         train_df['species'] = train_df['species'].map(species_map)
                         csv = train_df.to_csv(index=False)
                         st.download_button(
-                            "📥 Download Training CSV",
+                            "📥 Descargar CSV de Entrenamiento",
                             csv,
                             "iris_train_processed.csv",
                             "text/csv"
                         )
 
                 with col2:
-                    if st.button("📊 Export Test Data", key="iris_test_export"):
+                    if st.button("📊 Exportar Datos de Prueba", key="iris_test_export"):
                         test_df = st.session_state.iris_X_test.copy()
                         test_df['species'] = st.session_state.iris_y_test
                         # Convert back to species names for export
                         test_df['species'] = test_df['species'].map(species_map)
                         csv = test_df.to_csv(index=False)
                         st.download_button(
-                            "📥 Download Test CSV",
+                            "📥 Descargar CSV de Prueba",
                             csv,
                             "iris_test_processed.csv",
                             "text/csv"
                         )
             else:
-                st.warning("Please complete all preprocessing stages to see the summary")
+                st.warning("Por favor complete todas las etapas de preprocesamiento para ver el resumen")
 
 # Pie de página
 st.sidebar.markdown("---")

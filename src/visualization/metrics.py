@@ -169,7 +169,7 @@ def display_metrics_dashboard(metrics, title="Dashboard de Métricas"):
     if 'data_types' in metrics:
         st.subheader("📊 Distribución de Tipos de Datos")
         types_df = pd.DataFrame([metrics['data_types']])
-        st.dataframe(types_df.T, use_container_width=True)
+        st.dataframe(types_df.T, width='stretch')
 
     # Datos faltantes
     if 'missing_data' in metrics:
@@ -184,7 +184,7 @@ def display_metrics_dashboard(metrics, title="Dashboard de Métricas"):
         ]
 
         missing_df = pd.DataFrame([missing_vals], columns=missing_cols)
-        st.dataframe(missing_df, use_container_width=True)
+        st.dataframe(missing_df, width='stretch')
 
     # Duplicados
     if 'duplicates' in metrics:
@@ -197,7 +197,7 @@ def display_metrics_dashboard(metrics, title="Dashboard de Métricas"):
         ]
 
         dup_df = pd.DataFrame([dup_vals], columns=dup_cols)
-        st.dataframe(dup_df, use_container_width=True)
+        st.dataframe(dup_df, width='stretch')
 
 def display_pipeline_summary(pipeline_summary):
     """
@@ -222,7 +222,7 @@ def display_pipeline_summary(pipeline_summary):
                         'Métrica': list(changes.keys()),
                         'Valor': [f"{v:,.0f}" if isinstance(v, (int, float)) and abs(v) >= 1 else ".2f" for v in changes.values()]
                     })
-                    st.dataframe(changes_df, use_container_width=True)
+                    st.dataframe(changes_df, width='stretch')
 
                 with col2:
                     st.subheader("📈 Estado Final")
@@ -231,7 +231,7 @@ def display_pipeline_summary(pipeline_summary):
                         'Métrica': list(final_state.keys()),
                         'Valor': [f"{v:,.0f}" if isinstance(v, (int, float)) and abs(v) >= 1 else ".2f" for v in final_state.values()]
                     })
-                    st.dataframe(final_df, use_container_width=True)
+                    st.dataframe(final_df, width='stretch')
 
 def calculate_model_readiness_score(df, target_col=None):
     """
